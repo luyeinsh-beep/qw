@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>餐饮评估工作台</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">🍽️</div>
+    <h1>餐饮评估工作台</h1>
+    <p>门店经营优化 · 7维评估</p>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">
+      <span class="nav-icon">📊</span> 工作台概览
+    </button>
+    <button class="nav-item" data-view="merchants" onclick="switchView('merchants')">
+      <span class="nav-icon">🏪</span> 商户管理
+      <span class="badge" id="merchantCount">0</span>
+    </button>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="user-info">
+      <span class="user-avatar">👤</span>
+      <div>
+        <span class="user-name" id="currentUserName">...</span>
+        <span class="user-role" id="currentUserRole"></span>
+      </div>
+    </div>
+    <button class="btn-logout" onclick="logout()">退出</button>
+  </div>
+</aside>
+
+<main class="main">
+  <!-- Dashboard View -->
+  <div class="view active" id="view-dashboard">
+    <div class="page-header">
+      <h2>工作台概览</h2>
+      <p>查看所有商户的评估概况，快速了解各门店经营健康度</p>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-icon blue">🏪</div><div class="stat-info"><div class="stat-value" id="stat-total">0</div><div class="stat-label">商户总数</div></div></div>
+      <div class="stat-card"><div class="stat-icon green">✅</div><div class="stat-info"><div class="stat-value" id="stat-evaluated">0</div><div class="stat-label">已评估</div></div></div>
+      <div class="stat-card"><div class="stat-icon amber">⭐</div><div class="stat-info"><div class="stat-value" id="stat-avg">-</div><div class="stat-label">平均评分</div></div></div>
+      <div class="stat-card"><div class="stat-icon red">📋</div><div class="stat-info"><div class="stat-value" id="stat-pending">0</div><div class="stat-label">待评估</div></div></div>
+    </div>
+    <div class="toolbar">
+      <h3 style="font-size:16px;">商户列表</h3>
+      <div style="display:flex;gap:8px;">
+        <input type="text" placeholder="搜索商户..." id="dashSearch" oninput="renderDashboard()" style="width:220px;">
+        <button class="btn btn-primary" onclick="openMerchantModal()">+ 新建商户</button>
+      </div>
+    </div>
+    <div class="merchant-grid" id="dashboardGrid"></div>
+    <div class="empty-state" id="emptyDashboard" style="display:none;">
+      <div class="empty-icon">🍜</div><h3>还没有商户数据</h3><p>创建第一个商户，开始7维经营评估</p>
+      <button class="btn btn-primary" onclick="openMerchantModal()">+ 创建商户</button>
+    </div>
+  </div>
+
+  <!-- Merchants View -->
+  <div class="view" id="view-merchants">
+    <div class="page-header">
+      <h2>商户管理</h2><p>管理所有商户信息，为每个商户进行7维评估</p>
+    </div>
+    <div class="search-bar">
+      <input type="text" placeholder="搜索商户名称 / 地址..." id="merchantSearch" oninput="renderMerchantList()">
+      <select id="merchantTypeFilter" onchange="renderMerchantList()">
+        <option value="">全部类型</option><option>中餐</option><option>火锅</option><option>快餐</option><option>茶饮</option><option>西餐</option><option>日料</option><option>烧烤</option><option>烘焙</option><option>小吃</option><option>其他</option>
+      </select>
+      <select id="merchantStatusFilter" onchange="renderMerchantList()">
+        <option value="">全部状态</option><option value="evaluated">已评估</option><option value="pending">待评估</option>
+      </select>
+      <button class="btn btn-primary" onclick="openMerchantModal()">+ 新建商户</button>
+    </div>
+    <div class="merchant-grid" id="merchantListGrid"></div>
+    <div class="empty-state" id="emptyMerchants" style="display:none;">
+      <div class="empty-icon">🏪</div><h3>暂无商户</h3><p>添加商户后即可开始评估</p>
+      <button class="btn btn-primary" onclick="openMerchantModal()">+ 新建商户</button>
+    </div>
+  </div>
+
+  <!-- Evaluation View -->
+  <div class="view" id="view-evaluation">
+    <div class="page-header"><h2 id="evalTitle">门店评估</h2><p id="evalSubtitle"></p></div>
+    <div class="dim-tabs" id="dimTabs"></div>
+    <div id="dimSections"></div>
+    <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:20px;">
+      <button class="btn btn-ghost" onclick="switchView('dashboard')">返回</button>
+      <button class="btn btn-primary" id="btnSaveEval" onclick="saveAndViewReport()">保存并查看报告</button>
+    </div>
+  </div>
+
+  <!-- Report View -->
+  <div class="view" id="view-report">
+    <div class="page-header"><h2>评估报告</h2><p id="reportSubtitle"></p></div>
+    <div class="report-actions" style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="btn btn-outline" onclick="switchView('dashboard')">← 返回</button>
+      <button class="btn btn-outline" onclick="goBackToEval()">编辑评估</button>
+      <button class="btn btn-primary" onclick="window.print()">🖨️ 打印报告</button>
+    </div>
+    <div class="report-container" id="reportContent"></div>
+  </div>
+</main>
+
+<!-- Merchant Modal -->
+<div class="modal-overlay" id="merchantModal">
+  <div class="modal">
+    <h3 id="modalTitle">新建商户</h3>
+    <div class="form-row">
+      <div class="form-group"><label>商户名称 *</label><input type="text" id="mName" placeholder="如：老张川菜馆"></div>
+      <div class="form-group"><label>餐饮类型 *</label>
+        <select id="mType"><option value="">请选择</option><option>中餐</option><option>火锅</option><option>快餐</option><option>茶饮</option><option>西餐</option><option>日料</option><option>烧烤</option><option>烘焙</option><option>小吃</option><option>其他</option></select>
+      </div>
+      <div class="form-group"><label>门店地址</label><input type="text" id="mAddress" placeholder="详细地址"></div>
+      <div class="form-group"><label>联系人</label><input type="text" id="mContact" placeholder="联系人姓名"></div>
+      <div class="form-group"><label>联系电话</label><input type="text" id="mPhone" placeholder="手机号"></div>
+      <div class="form-group"><label>门店规模</label>
+        <select id="mScale"><option value="">请选择</option><option>单店</option><option>2-5家</option><option>6-20家</option><option>20家以上</option></select>
+      </div>
+      <div class="form-group"><label>月均营收（估算）</label>
+        <select id="mRevenue"><option value="">请选择</option><option>10万以下</option><option>10-30万</option><option>30-60万</option><option>60-100万</option><option>100万以上</option></select>
+      </div>
+      <div class="form-group"><label>备注</label><input type="text" id="mNote" placeholder="其他备注信息"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeMerchantModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveMerchant()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="/js/app.js"></script>
+
+</body>
+</html>
