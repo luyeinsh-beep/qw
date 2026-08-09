@@ -280,7 +280,7 @@ app.post('/api/scrape-notes', authRequired, async (req, res) => {
 
   let browser;
   try {
-    browser = await chromium.launch({ channel: 'chrome', headless: true });
+    browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
     await page.setViewportSize({ width: 390, height: 844 });
 
