@@ -273,7 +273,6 @@ app.post('/api/scrape-notes', authRequired, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: '请提供话题链接' });
 
-  // Extract topicId from URL
   const topicMatch = url.match(/topicid=(\d+)/);
   if (!topicMatch) return res.status(400).json({ error: '无法识别话题ID，请确认链接格式' });
   const topicId = topicMatch[1];
@@ -287,7 +286,6 @@ app.post('/api/scrape-notes', authRequired, async (req, res) => {
     let topicInfo = null;
     let commentData = null;
 
-    // Capture API responses
     page.on('response', async (response) => {
       const rurl = response.url();
       try {
@@ -301,12 +299,11 @@ app.post('/api/scrape-notes', authRequired, async (req, res) => {
     });
 
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(2000);
 
-    // Scroll to trigger loading
     for (let i = 0; i < 3; i++) {
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(800);
     }
 
     if (!topicInfo || !topicInfo.topicInfo) {
@@ -317,7 +314,7 @@ app.post('/api/scrape-notes', authRequired, async (req, res) => {
     const posts = (commentData?.data?.topicContentList || []).map(item => ({
       platform: '大众点评',
       title: item.summary || '',
-      coverUrl: (item.picUrl || '').replace(/%(40|90|750)w_\d+h.*/, ''),
+      coverUrl: (item.picUrl || '').replace(/%(40|90|750)w_\d+h[^.]*/, ''),
       views: 0,
       likes: item.likeCount || 0,
       comments: 0,
@@ -328,40 +325,6 @@ app.post('/api/scrape-notes', authRequired, async (req, res) => {
       jumpUrl: item.jumpUrl || '',
       sourceId: String(item.mainId || '')
     }));
-
-    // Try to load more pages
-    if (commentData?.data && posts.length >= 10) {
-      try {
-        const totalCount = parseInt(topic.reviewCount) || posts.length;
-        const pages = Math.min(Math.ceil(totalCount / 10), 3);
-        for (let p = 2; p <= pages; p++) {
-          const moreUrl = `https://m.dianping.com/webtopic/api/topiccomment.bin?limit=10&topicId=${topicId}&lat=0&lng=0&locationCityId=1&pageCityId=0&feedType=1&sortType=0&page=${p}&topicsputype=0`;
-          try {
-            const resp = await page.evaluate(async (u) => {
-              const r = await fetch(u);
-              return r.ok ? r.json() : null;
-            }, moreUrl);
-            if (resp?.data?.topicContentList) {
-              const morePosts = resp.data.topicContentList.map(item => ({
-                platform: '大众点评',
-                title: item.summary || '',
-                coverUrl: (item.picUrl || '').replace(/%(40|90|750)w_\d+h.*/, ''),
-                views: 0,
-                likes: item.likeCount || 0,
-                comments: 0,
-                shares: 0,
-                publishDate: '',
-                authorName: item.authorName || '',
-                authorAvatar: item.authorAvatar || '',
-                jumpUrl: item.jumpUrl || '',
-                sourceId: String(item.mainId || '')
-              }));
-              posts.push(...morePosts);
-            }
-          } catch {}
-        }
-      } catch {}
-    }
 
     res.json({
       success: true,
