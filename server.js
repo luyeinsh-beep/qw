@@ -6,6 +6,7 @@ const Database = require('better-sqlite3');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const crypto = require('crypto');
+const fs = require('fs');
 const { chromium } = require('playwright');
 
 const app = express();
@@ -14,7 +15,10 @@ const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('he
 const JWT_EXPIRY = '7d';
 
 // ── Database ──────────────────────────────────────────
-const db = new Database(path.join(__dirname, 'data.db'));
+// Use Railway volume path if available, otherwise local
+const DB_DIR = fs.existsSync('/data') ? '/data' : __dirname;
+if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
+const db = new Database(path.join(DB_DIR, 'data.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
