@@ -7,7 +7,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
-const { chromium } = require('playwright');
+const puppeteer = require('puppeteer-core');
 
 const app = express();
 const PORT = process.env.PORT || 3456;
@@ -268,46 +268,67 @@ app.get('/api/stats', authRequired, (req, res) => {
   res.json({ total, evaluated, pending: total - evaluated, avgScore: avgScore ? Math.round(avgScore * 10) / 10 : null, users });
 });
 
-// ── Scrape Route ──────────────────────────────────────
+// ── Scrape Route (puppeteer + cloud chromium) ───────
+async function getBrowser() {
+  let chromium;
+  try {
+    chromium = require('@sparticuz/chromium');
+  } catch {}
+  
+  if (chromium) {
+    // Railway / cloud: use bundled chromium
+    return puppeteer.launch({
+      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+    });
+  }
+  // Local: use system Chrome
+  return puppeteer.launch({
+    channel: 'chrome',
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
+}
+
 app.post('/api/scrape-notes', authRequired, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: '请提供话题链接' });
 
   const topicMatch = url.match(/topicid=(\d+)/);
-  if (!topicMatch) return res.status(400).json({ error: '无法识别话题ID，请确认链接格式' });
+  if (!topicMatch) return res.status(400).json({ error: '无法识别话题ID' });
   const topicId = topicMatch[1];
 
   let browser;
   try {
-    browser = await chromium.launch({ headless: true });
+    browser = await getBrowser();
     const page = await browser.newPage();
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewport({ width: 390, height: 844 });
 
-    let topicInfo = null;
-    let commentData = null;
-
-    page.on('response', async (response) => {
-      const rurl = response.url();
+    let topicInfo = null, commentData = null;
+    page.on('response', async (resp) => {
+      const rurl = resp.url();
       try {
-        if (rurl.includes('topicinfo.bin') && rurl.includes(`topicId=${topicId}`)) {
-          topicInfo = await response.json();
+        if (rurl.includes('topicinfo.bin') && rurl.includes(topicId)) {
+          topicInfo = await resp.json();
         }
-        if (rurl.includes('topiccomment.bin') && rurl.includes(`topicId=${topicId}`)) {
-          commentData = await response.json();
+        if (rurl.includes('topiccomment.bin') && rurl.includes(topicId)) {
+          commentData = await resp.json();
         }
       } catch {}
     });
 
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+    await new Promise(r => setTimeout(r, 2000));
 
     for (let i = 0; i < 3; i++) {
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await page.waitForTimeout(800);
+      await new Promise(r => setTimeout(r, 800));
     }
 
-    if (!topicInfo || !topicInfo.topicInfo) {
-      return res.status(500).json({ error: '未能获取话题信息，请确认链接可正常访问' });
+    if (!topicInfo?.topicInfo) {
+      return res.status(500).json({ error: '未能获取话题信息' });
     }
 
     const topic = topicInfo.topicInfo;
@@ -317,9 +338,7 @@ app.post('/api/scrape-notes', authRequired, async (req, res) => {
       coverUrl: (item.picUrl || '').replace(/%(40|90|750)w_\d+h[^.]*/, ''),
       views: 0,
       likes: item.likeCount || 0,
-      comments: 0,
-      shares: 0,
-      publishDate: '',
+      comments: 0, shares: 0, publishDate: '',
       authorName: item.authorName || '',
       authorAvatar: item.authorAvatar || '',
       jumpUrl: item.jumpUrl || '',
