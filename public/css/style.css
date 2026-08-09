@@ -206,3 +206,38 @@ textarea { resize:vertical; min-height:80px; }
   .stats-grid { grid-template-columns:1fr; }
   .network-status { left:60px; }
 }
+
+/* ── Channel Notes ────────────────────────────────── */
+.note-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px; }
+.note-card { background:var(--bg); border-radius:var(--radius-sm); padding:14px; border:1px solid var(--border); }
+.note-card-header { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.note-platform-badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:12px; }
+.note-date { font-size:11px; color:var(--text-muted); margin-left:auto; }
+.note-card-actions { display:flex; gap:2px; }
+.note-cover { width:100%; aspect-ratio:4/3; object-fit:cover; border-radius:6px; margin-bottom:8px; background:var(--border); }
+.note-title { font-size:14px; font-weight:600; margin-bottom:6px; line-height:1.4; }
+.note-stats { display:flex; flex-wrap:wrap; gap:10px; font-size:12px; color:var(--text-secondary); }
+.note-stats span { display:flex; align-items:center; gap:3px; }
+.note-form { border:1px dashed var(--border); }
+
+/* Report note cards */
+.note-total-stats { display:flex; gap:16px; margin-bottom:16px; flex-wrap:wrap; }
+.nts-item { background:var(--bg); border-radius:var(--radius-sm); padding:10px 18px; text-align:center; min-width:80px; }
+.nts-val { display:block; font-size:20px; font-weight:800; color:var(--primary); }
+.nts-label { display:block; font-size:11px; color:var(--text-muted); margin-top:2px; }
+.note-report-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; }
+.note-report-card { background:var(--bg); border-radius:var(--radius); overflow:hidden; border:1px solid var(--border); transition:transform .2s; }
+.note-report-card:hover { transform:translateY(-2px); box-shadow:var(--shadow-md); }
+.nrc-cover-wrap { position:relative; width:100%; aspect-ratio:4/3; background:var(--border); overflow:hidden; }
+.nrc-cover { width:100%; height:100%; object-fit:cover; }
+.nrc-no-cover { width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:40px; color:var(--text-muted); background:linear-gradient(135deg,#F1F5F9,#E2E8F0); }
+.nrc-platform { position:absolute; top:8px; left:8px; font-size:10px; font-weight:700; padding:3px 8px; border-radius:10px; }
+.nrc-body { padding:12px; }
+.nrc-title { font-size:13px; font-weight:600; line-height:1.4; margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.nrc-stats { display:flex; flex-wrap:wrap; gap:8px; font-size:11px; color:var(--text-secondary); }
+.nrc-stats span { display:flex; align-items:center; gap:2px; }
+.nrc-date { font-size:11px; color:var(--text-muted); margin-top:6px; }
+
+@media print {
+  .note-report-card { break-inside:avoid; }
+}

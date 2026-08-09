@@ -6,6 +6,7 @@ const Database = require('better-sqlite3');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const crypto = require('crypto');
+const { chromium } = require('playwright');
 
 const app = express();
 const PORT = process.env.PORT || 3456;
@@ -261,6 +262,118 @@ app.get('/api/stats', authRequired, (req, res) => {
   const users = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
 
   res.json({ total, evaluated, pending: total - evaluated, avgScore: avgScore ? Math.round(avgScore * 10) / 10 : null, users });
+});
+
+// ── Scrape Route ──────────────────────────────────────
+app.post('/api/scrape-notes', authRequired, async (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: '请提供话题链接' });
+
+  // Extract topicId from URL
+  const topicMatch = url.match(/topicid=(\d+)/);
+  if (!topicMatch) return res.status(400).json({ error: '无法识别话题ID，请确认链接格式' });
+  const topicId = topicMatch[1];
+
+  let browser;
+  try {
+    browser = await chromium.launch({ channel: 'chrome', headless: true });
+    const page = await browser.newPage();
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    let topicInfo = null;
+    let commentData = null;
+
+    // Capture API responses
+    page.on('response', async (response) => {
+      const rurl = response.url();
+      try {
+        if (rurl.includes('topicinfo.bin') && rurl.includes(`topicId=${topicId}`)) {
+          topicInfo = await response.json();
+        }
+        if (rurl.includes('topiccomment.bin') && rurl.includes(`topicId=${topicId}`)) {
+          commentData = await response.json();
+        }
+      } catch {}
+    });
+
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.waitForTimeout(3000);
+
+    // Scroll to trigger loading
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+      await page.waitForTimeout(1000);
+    }
+
+    if (!topicInfo || !topicInfo.topicInfo) {
+      return res.status(500).json({ error: '未能获取话题信息，请确认链接可正常访问' });
+    }
+
+    const topic = topicInfo.topicInfo;
+    const posts = (commentData?.data?.topicContentList || []).map(item => ({
+      platform: '大众点评',
+      title: item.summary || '',
+      coverUrl: (item.picUrl || '').replace(/%(40|90|750)w_\d+h.*/, ''),
+      views: 0,
+      likes: item.likeCount || 0,
+      comments: 0,
+      shares: 0,
+      publishDate: '',
+      authorName: item.authorName || '',
+      authorAvatar: item.authorAvatar || '',
+      jumpUrl: item.jumpUrl || '',
+      sourceId: String(item.mainId || '')
+    }));
+
+    // Try to load more pages
+    if (commentData?.data && posts.length >= 10) {
+      try {
+        const totalCount = parseInt(topic.reviewCount) || posts.length;
+        const pages = Math.min(Math.ceil(totalCount / 10), 3);
+        for (let p = 2; p <= pages; p++) {
+          const moreUrl = `https://m.dianping.com/webtopic/api/topiccomment.bin?limit=10&topicId=${topicId}&lat=0&lng=0&locationCityId=1&pageCityId=0&feedType=1&sortType=0&page=${p}&topicsputype=0`;
+          try {
+            const resp = await page.evaluate(async (u) => {
+              const r = await fetch(u);
+              return r.ok ? r.json() : null;
+            }, moreUrl);
+            if (resp?.data?.topicContentList) {
+              const morePosts = resp.data.topicContentList.map(item => ({
+                platform: '大众点评',
+                title: item.summary || '',
+                coverUrl: (item.picUrl || '').replace(/%(40|90|750)w_\d+h.*/, ''),
+                views: 0,
+                likes: item.likeCount || 0,
+                comments: 0,
+                shares: 0,
+                publishDate: '',
+                authorName: item.authorName || '',
+                authorAvatar: item.authorAvatar || '',
+                jumpUrl: item.jumpUrl || '',
+                sourceId: String(item.mainId || '')
+              }));
+              posts.push(...morePosts);
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
+    res.json({
+      success: true,
+      topicName: topic.title || '',
+      topicViews: parseInt(topic.visitCount) || 0,
+      totalPosts: parseInt(topic.reviewCount) || posts.length,
+      topicCover: topic.picUrl || '',
+      notes: posts
+    });
+
+  } catch (e) {
+    console.error('Scrape error:', e.message);
+    res.status(500).json({ error: '抓取失败: ' + e.message });
+  } finally {
+    if (browser) await browser.close().catch(() => {});
+  }
 });
 
 // ── SPA fallback ──────────────────────────────────────

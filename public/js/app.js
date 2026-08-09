@@ -66,12 +66,20 @@ const DIMENSIONS = [
 ];
 
 function getDefaultEval() {
-  const eval_ = { date: new Date().toISOString().split('T')[0], evaluator: getUser()?.display_name || '', summary: '', priorityActions: [], dimensions: {} };
+  const eval_ = { date: new Date().toISOString().split('T')[0], evaluator: getUser()?.display_name || '', summary: '', priorityActions: [], dimensions: {}, channelNotes: [] };
   DIMENSIONS.forEach(d => {
     eval_.dimensions[d.id] = { subItems: d.subItems.map(s => ({ name: s, score: 0 })), comment: '', suggestion: '' };
   });
   return eval_;
 }
+
+// Channel note platform config
+const NOTE_PLATFORMS = ['小红书','抖音','大众点评','美团','快手','视频号','微博','B站','其他'];
+const PLATFORM_COLORS = {
+  '小红书':'#FF2442','抖音':'#000000','大众点评':'#FFB800','美团':'#FFC300',
+  '快手':'#FF4906','视频号':'#07C160','微博':'#E6162D','B站':'#FB7299','其他':'#64748B'
+};
+function formatNum(n) { if (n >= 10000) return (n/10000).toFixed(1)+'w'; if (n >= 1000) return (n/1000).toFixed(1)+'k'; return String(n||0); }
 
 // ============ STATE ============
 let merchantsData = [];
@@ -414,6 +422,20 @@ function renderEvalForm() {
         <div class="form-group"><label>整体评语摘要（将显示在报告顶部）</label><textarea id="evalSummary" onchange="currentEvalData.summary=this.value">${currentEvalData.summary || ''}</textarea></div>
       </div>
     </div>`;
+
+  // Channel Notes section
+  const notes = currentEvalData.channelNotes || [];
+  document.getElementById('dimSections').innerHTML += `
+    <div class="form-section" style="margin-top:8px;">
+      <h3>📱 渠道笔记投放数据 <span style="font-size:13px;color:var(--text-muted);font-weight:400;">（${notes.length}条）</span></h3>
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:16px;">记录商家在各平台投放的笔记/视频数据，包括封面、标题、流量表现，用于评估品牌宣发效果。</p>
+      <div class="note-list" id="noteList">
+        ${notes.map((n, i) => renderNoteCard(n, i)).join('')}
+      </div>
+      <div id="noteFormContainer" style="display:none;"></div>
+      <button class="btn btn-outline btn-sm" style="margin-top:12px;" onclick="showNoteForm()">+ 添加笔记</button>
+      <button class="btn btn-outline btn-sm" style="margin-top:12px;" onclick="showImportUrl()">📥 导入链接</button>
+    </div>`;
 }
 
 function switchDimTab(idx) {
@@ -431,6 +453,194 @@ function setSubScore(dimId, subIdx, val) {
 
 function updateDimField(dimId, field, val) {
   currentEvalData.dimensions[dimId][field] = val;
+}
+
+// ============ CHANNEL NOTES ============
+function renderNoteCard(note, idx) {
+  const pc = PLATFORM_COLORS[note.platform] || '#64748B';
+  return `<div class="note-card" id="note-card-${idx}">
+    <div class="note-card-header">
+      <span class="note-platform-badge" style="background:${pc}15;color:${pc};border:1px solid ${pc}30;">${note.platform}</span>
+      <span class="note-date">${note.publishDate || ''}</span>
+      <div class="note-card-actions">
+        <button class="btn btn-ghost btn-sm" onclick="editNote(${idx})">✏️</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="removeNote(${idx})">🗑️</button>
+      </div>
+    </div>
+    ${note.coverUrl ? `<img class="note-cover" src="${escHtml(note.coverUrl)}" alt="封面" onerror="this.style.display='none'" loading="lazy">` : ''}
+    <div class="note-title">${escHtml(note.title || '未填写标题')}</div>
+    <div class="note-stats">
+      ${note.views ? `<span>👁️ ${formatNum(note.views)}</span>` : ''}
+      ${note.likes ? `<span>❤️ ${formatNum(note.likes)}</span>` : ''}
+      ${note.comments ? `<span>💬 ${formatNum(note.comments)}</span>` : ''}
+      ${note.shares ? `<span>🔄 ${formatNum(note.shares)}</span>` : ''}
+    </div>
+  </div>`;
+}
+
+function showNoteForm(editIdx) {
+  const container = document.getElementById('noteFormContainer');
+  const note = editIdx !== undefined ? (currentEvalData.channelNotes || [])[editIdx] : {};
+  container.innerHTML = `
+    <div class="note-form" style="margin-top:12px;padding:16px;background:var(--bg);border-radius:var(--radius-sm);">
+      <div class="form-row">
+        <div class="form-group">
+          <label>平台 *</label>
+          <select id="nfPlatform">${NOTE_PLATFORMS.map(p => `<option ${note.platform===p?'selected':''}>${p}</option>`).join('')}</select>
+        </div>
+        <div class="form-group">
+          <label>发布日期</label>
+          <input type="date" id="nfDate" value="${note.publishDate || ''}">
+        </div>
+      </div>
+      <div class="form-row full" style="margin-top:8px;">
+        <div class="form-group"><label>笔记标题 *</label><input type="text" id="nfTitle" value="${escHtml(note.title || '')}" placeholder="笔记/视频的标题"></div>
+      </div>
+      <div class="form-row full" style="margin-top:8px;">
+        <div class="form-group"><label>封面图片URL</label><input type="text" id="nfCover" value="${escHtml(note.coverUrl || '')}" placeholder="https://... 图片链接"></div>
+      </div>
+      <div class="form-row" style="margin-top:8px;">
+        <div class="form-group"><label>👁️ 浏览量</label><input type="number" id="nfViews" value="${note.views || ''}" placeholder="0" min="0"></div>
+        <div class="form-group"><label>❤️ 点赞数</label><input type="number" id="nfLikes" value="${note.likes || ''}" placeholder="0" min="0"></div>
+        <div class="form-group"><label>💬 评论数</label><input type="number" id="nfComments" value="${note.comments || ''}" placeholder="0" min="0"></div>
+        <div class="form-group"><label>🔄 分享数</label><input type="number" id="nfShares" value="${note.shares || ''}" placeholder="0" min="0"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+        <button class="btn btn-ghost btn-sm" onclick="hideNoteForm()">取消</button>
+        <button class="btn btn-primary btn-sm" onclick="saveNote(${editIdx !== undefined ? editIdx : -1})">${editIdx !== undefined ? '更新' : '添加'}</button>
+      </div>
+    </div>`;
+  container.style.display = 'block';
+  container.scrollIntoView({ behavior: 'smooth' });
+}
+
+function hideNoteForm() {
+  document.getElementById('noteFormContainer').style.display = 'none';
+}
+
+function saveNote(editIdx) {
+  const platform = document.getElementById('nfPlatform')?.value;
+  const title = document.getElementById('nfTitle')?.value?.trim();
+  if (!platform || !title) { showToast('平台和标题不能为空', 'danger'); return; }
+
+  const note = {
+    platform,
+    title,
+    coverUrl: document.getElementById('nfCover')?.value?.trim() || '',
+    views: parseInt(document.getElementById('nfViews')?.value) || 0,
+    likes: parseInt(document.getElementById('nfLikes')?.value) || 0,
+    comments: parseInt(document.getElementById('nfComments')?.value) || 0,
+    shares: parseInt(document.getElementById('nfShares')?.value) || 0,
+    publishDate: document.getElementById('nfDate')?.value || ''
+  };
+
+  if (!currentEvalData.channelNotes) currentEvalData.channelNotes = [];
+  if (editIdx >= 0) {
+    currentEvalData.channelNotes[editIdx] = note;
+  } else {
+    currentEvalData.channelNotes.push(note);
+  }
+  hideNoteForm();
+  refreshNotesUI();
+}
+
+function editNote(idx) {
+  showNoteForm(idx);
+}
+
+function removeNote(idx) {
+  if (!confirm('确定删除这条笔记数据？')) return;
+  currentEvalData.channelNotes.splice(idx, 1);
+  hideNoteForm();
+  refreshNotesUI();
+}
+
+function refreshNotesUI() {
+  const notes = currentEvalData.channelNotes || [];
+  // Update note list
+  const list = document.getElementById('noteList');
+  if (list) {
+    list.innerHTML = notes.map((n, i) => renderNoteCard(n, i)).join('');
+  }
+  // Update count in header
+  const h3 = document.querySelector('.form-section h3');
+  if (h3 && h3.textContent.includes('渠道笔记')) {
+    h3.innerHTML = '📱 渠道笔记投放数据 <span style="font-size:13px;color:var(--text-muted);font-weight:400;">（' + notes.length + '条）</span>';
+  }
+}
+
+// ============ IMPORT NOTES FROM URL ============
+function showImportUrl() {
+  const container = document.getElementById('noteFormContainer');
+  container.innerHTML = `
+    <div class="note-form" style="margin-top:12px;padding:16px;background:var(--bg);border-radius:var(--radius-sm);">
+      <div class="form-row full">
+        <div class="form-group">
+          <label>话题链接</label>
+          <input type="text" id="nfImportUrl" placeholder="粘贴大众点评话题聚合页链接..." value="">
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:8px;">
+        支持大众点评话题聚合页链接，系统将自动抓取话题下所有笔记的封面、标题和互动数据。
+      </p>
+      <div id="importStatus" style="margin-top:8px;"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+        <button class="btn btn-ghost btn-sm" onclick="hideNoteForm()">取消</button>
+        <button class="btn btn-primary btn-sm" id="btnImport" onclick="importNotes()">开始导入</button>
+      </div>
+    </div>`;
+  container.style.display = 'block';
+  container.scrollIntoView({ behavior: 'smooth' });
+  // Auto-paste clipboard if available
+  navigator.clipboard?.readText().then(text => {
+    if (text.includes('dianping.com') || text.includes('topicid=')) {
+      document.getElementById('nfImportUrl').value = text;
+    }
+  }).catch(() => {});
+}
+
+async function importNotes() {
+  const url = document.getElementById('nfImportUrl')?.value?.trim();
+  if (!url) { showToast('请粘贴话题链接', 'danger'); return; }
+
+  const btn = document.getElementById('btnImport');
+  const status = document.getElementById('importStatus');
+  btn.disabled = true;
+  btn.textContent = '抓取中...';
+  status.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-secondary);font-size:13px;"><span class="spinner" style="display:inline-block;width:16px;height:16px;"></span> 正在抓取话题数据，请稍候...</div>';
+
+  try {
+    const resp = await api('/api/scrape-notes', {
+      method: 'POST',
+      body: JSON.stringify({ url })
+    });
+
+    if (!resp.success || !resp.notes || resp.notes.length === 0) {
+      status.innerHTML = '<p style="color:var(--danger);font-size:13px;">未找到笔记数据，请确认链接可正常访问</p>';
+      btn.disabled = false;
+      btn.textContent = '开始导入';
+      return;
+    }
+
+    if (!currentEvalData.channelNotes) currentEvalData.channelNotes = [];
+    const existingIds = new Set(currentEvalData.channelNotes.map(n => n.sourceId).filter(Boolean));
+    let newCount = 0;
+    resp.notes.forEach(n => {
+      if (!n.sourceId || !existingIds.has(n.sourceId)) {
+        currentEvalData.channelNotes.push(n);
+        if (n.sourceId) existingIds.add(n.sourceId);
+        newCount++;
+      }
+    });
+
+    hideNoteForm();
+    refreshNotesUI();
+    showToast('成功导入 ' + newCount + ' 条笔记（话题：' + resp.topicName + '，共' + resp.totalPosts + '篇）', 'success');
+  } catch (e) {
+    status.innerHTML = '<p style="color:var(--danger);font-size:13px;">导入失败：' + escHtml(e.message) + '</p>';
+    btn.disabled = false;
+    btn.textContent = '重试';
+  }
 }
 
 // ============ SAVE & REPORT ============
@@ -566,6 +776,8 @@ function renderReport(m) {
       `).join('')}
     </div>
 
+    ${renderChannelNotesReport(evalData)}
+
     <div class="disclaimer">
       <h4>📌 免责声明</h4>
       <p>本报告基于评估时的门店信息与观察，提供一个相对客观的经营参考。评分仅为经营诊断参考，不构成投资或经营决策建议。每个门店有其独特情况，建议结合实际情况综合判断。无论是否与我方达成合作，我们都希望这份评估能帮助您更好地理解门店的经营现状。</p>
@@ -620,6 +832,50 @@ function drawRadarChart() {
 
 function goBackToEval() {
   if (currentMerchantId) openEvalView(currentMerchantId);
+}
+
+function renderChannelNotesReport(evalData) {
+  const notes = evalData.channelNotes || [];
+  if (notes.length === 0) return '';
+
+  // Calculate totals
+  const totalViews = notes.reduce((s,n) => s + (n.views||0), 0);
+  const totalLikes = notes.reduce((s,n) => s + (n.likes||0), 0);
+  const totalComments = notes.reduce((s,n) => s + (n.comments||0), 0);
+  const totalShares = notes.reduce((s,n) => s + (n.shares||0), 0);
+
+  return `
+    <div style="margin-bottom:28px;">
+      <h3 style="margin-bottom:12px;font-size:17px;">📱 渠道投放数据 <span style="font-size:13px;color:var(--text-muted);font-weight:400;">共 ${notes.length} 条笔记</span></h3>
+      ${(totalViews > 0 || totalLikes > 0) ? `
+      <div class="note-total-stats">
+        ${totalViews ? `<div class="nts-item"><span class="nts-val">${formatNum(totalViews)}</span><span class="nts-label">总浏览量</span></div>` : ''}
+        ${totalLikes ? `<div class="nts-item"><span class="nts-val">${formatNum(totalLikes)}</span><span class="nts-label">总点赞</span></div>` : ''}
+        ${totalComments ? `<div class="nts-item"><span class="nts-val">${formatNum(totalComments)}</span><span class="nts-label">总评论</span></div>` : ''}
+        ${totalShares ? `<div class="nts-item"><span class="nts-val">${formatNum(totalShares)}</span><span class="nts-label">总分享</span></div>` : ''}
+      </div>` : ''}
+      <div class="note-report-grid">
+        ${notes.map(n => {
+          const pc = PLATFORM_COLORS[n.platform] || '#64748B';
+          return `<div class="note-report-card">
+            <div class="nrc-cover-wrap">
+              ${n.coverUrl ? `<img src="${escHtml(n.coverUrl)}" alt="封面" class="nrc-cover" onerror="this.parentElement.innerHTML='<div class=\\'nrc-no-cover\\'>📷</div>'" loading="lazy">` : '<div class="nrc-no-cover">📷</div>'}
+              <span class="nrc-platform" style="background:${pc};color:#fff;">${n.platform}</span>
+            </div>
+            <div class="nrc-body">
+              <div class="nrc-title" title="${escHtml(n.title)}">${escHtml(n.title.length > 40 ? n.title.slice(0,40)+'...' : n.title)}</div>
+              <div class="nrc-stats">
+                ${n.views ? `<span>👁️ ${formatNum(n.views)}</span>` : ''}
+                ${n.likes ? `<span>❤️ ${formatNum(n.likes)}</span>` : ''}
+                ${n.comments ? `<span>💬 ${formatNum(n.comments)}</span>` : ''}
+                ${n.shares ? `<span>🔄 ${formatNum(n.shares)}</span>` : ''}
+              </div>
+              ${n.publishDate ? `<div class="nrc-date">📅 ${n.publishDate}</div>` : ''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
 }
 
 // ============ INIT ============
